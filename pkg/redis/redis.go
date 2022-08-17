@@ -165,7 +165,8 @@ func (r *Redis) Write(ctx context.Context) error {
 
 			err := r.Pool.Do(radix.Pipeline(actions...))
 			if err != nil {
-				return err
+				fmt.Println("error write")
+				//return err
 			}
 			r.maybeLog("w")
 		}

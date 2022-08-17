@@ -66,32 +66,44 @@ func (f *File) Read(ctx context.Context) error {
 	defer d.Close()
 
 	// Scan file, split by double-cross separator
+
 	scanner := bufio.NewScanner(d)
+	buf := make([]byte, 0, bufio.MaxScanTokenSize)
+	scanner.Buffer(buf, 1024*1024)
 	scanner.Split(splitCross)
 
 	// Scan line by line
 	// file protocol is key✝✝value✝✝ttl✝✝
-	for scanner.Scan() {
+	for {
+		var key, value, ttl string
 		// Get key
-		key := scanner.Text()
+		if s1 := scanner.Scan(); s1 {
+			key = scanner.Text()
+		}
+
 		// trigger next scan to get value
-		scanner.Scan()
-		value := scanner.Text()
+		if s2 := scanner.Scan(); s2 {
+			value = scanner.Text()
+		}
+
 		// trigger next scan to get ttl
-		scanner.Scan()
-		ttl := scanner.Text()
+		if s3 := scanner.Scan(); s3 {
+			ttl = scanner.Text()
+		}
+
 		select {
 		case <-ctx.Done():
 			fmt.Println("")
 			fmt.Println("file read: exit")
 			return ctx.Err()
-		case f.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
+		case f.Bus <- []*message.Payload{&message.Payload{Key: key, Value: value, TTL: ttl}}:
 			f.maybeLog("r")
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		fmt.Println(err)
+		return nil
 	}
 
 	return nil
@@ -127,6 +139,18 @@ func (f *File) Write(ctx context.Context) error {
 			}
 
 			for _, p := range batch {
+				if len(p.Key) >= bufio.MaxScanTokenSize {
+					fmt.Println("ignore by key")
+					continue
+				}
+				if len(p.Value) >= bufio.MaxScanTokenSize {
+					fmt.Println("ignore by val")
+					continue
+				}
+				if len(p.TTL) >= bufio.MaxScanTokenSize {
+					fmt.Println("ignore by ttl")
+					continue
+				}
 				_, err := w.WriteString(p.Key + "✝✝" + p.Value + "✝✝" + p.TTL + "✝✝")
 				if err != nil {
 					return err
